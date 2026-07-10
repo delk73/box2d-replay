@@ -1965,6 +1965,12 @@ static int b2RecDispatchOne( b2RecPlayer* player )
 		return -1;
 	}
 	int payloadStart = rdr->cursor;
+	if ( payloadSize > (uint32_t)( rdr->size - payloadStart ) )
+	{
+		rdr->ok = false;
+		return -1;
+	}
+	int payloadEnd = payloadStart + (int)payloadSize;
 
 	switch ( opcode )
 	{
@@ -1982,16 +1988,16 @@ static int b2RecDispatchOne( b2RecPlayer* player )
 #undef ARG
 		default:
 			printf( "b2ReplayFile: unknown opcode 0x%02X, skipping %u bytes\n", opcode, payloadSize );
-			// payloadStart is in bounds, so size - payloadStart is the bytes left to skip over
-			if ( payloadSize > (uint32_t)( rdr->size - payloadStart ) )
-			{
-				rdr->ok = false;
-			}
-			else
-			{
-				rdr->cursor = payloadStart + (int)payloadSize;
-			}
+			rdr->cursor = payloadEnd;
 			break;
+	}
+
+	if ( rdr->ok && rdr->cursor != payloadEnd )
+	{
+		printf( "b2ReplayFile: opcode 0x%02X payload boundary mismatch: consumed %d of %u bytes\n", opcode,
+				rdr->cursor - payloadStart, payloadSize );
+		rdr->ok = false;
+		return -1;
 	}
 
 	return (int)opcode;

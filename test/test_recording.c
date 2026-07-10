@@ -20,6 +20,93 @@
 
 static const char* s_recPath = "recording_test.b2rec";
 
+static uint32_t ReadReplayPayloadSize( const uint8_t* data, int recordOffset )
+{
+	return (uint32_t)data[recordOffset + 1] | ( (uint32_t)data[recordOffset + 2] << 8 ) |
+						( (uint32_t)data[recordOffset + 3] << 16 );
+}
+
+static int FindReplayRecord( const uint8_t* data, int size, uint8_t opcode )
+{
+	uint64_t snapshotSize = 0;
+	for ( int i = 0; i < 8; ++i )
+	{
+		snapshotSize |= (uint64_t)data[24 + i] << ( 8 * i );
+	}
+
+	int cursor = 32 + (int)snapshotSize;
+	while ( cursor + 4 <= size )
+	{
+		uint32_t payloadSize = ReadReplayPayloadSize( data, cursor );
+		int payloadStart = cursor + 4;
+		if ( payloadSize > (uint32_t)( size - payloadStart ) )
+		{
+			return -1;
+		}
+		if ( data[cursor] == opcode )
+		{
+			return cursor;
+		}
+		cursor = payloadStart + (int)payloadSize;
+	}
+
+	return -1;
+}
+
+static void WriteReplayPayloadSize( uint8_t* data, int recordOffset, uint32_t value )
+{
+	data[recordOffset + 1] = (uint8_t)value;
+	data[recordOffset + 2] = (uint8_t)( value >> 8 );
+	data[recordOffset + 3] = (uint8_t)( value >> 16 );
+}
+
+static int MalformedReplayPayloadBoundaryTest( const uint8_t* recData, int recSize )
+{
+	int bodyRecord = FindReplayRecord( recData, recSize, 0x10 );
+	int boundsRecord = FindReplayRecord( recData, recSize, 0xF2 );
+	ENSURE( bodyRecord >= 0 );
+	ENSURE( boundsRecord >= 0 );
+
+	// A known opcode whose declared payload is shorter than its generated reader consumes.
+	{
+		uint8_t* patched = b2Alloc( recSize );
+		memcpy( patched, recData, recSize );
+		WriteReplayPayloadSize( patched, bodyRecord, 0 );
+		ENSURE( b2ValidateReplay( patched, recSize, 0 ) == false );
+		b2Free( patched, recSize );
+	}
+
+	// A known opcode with trailing bytes in its declared payload.
+	{
+		uint8_t* patched = b2Alloc( recSize );
+		memcpy( patched, recData, recSize );
+		uint32_t payloadSize = ReadReplayPayloadSize( patched, bodyRecord );
+		WriteReplayPayloadSize( patched, bodyRecord, payloadSize + 1 );
+		ENSURE( b2ValidateReplay( patched, recSize, 0 ) == false );
+		b2Free( patched, recSize );
+	}
+
+	// An unknown record with a valid payload is skipped without affecting replay.
+	{
+		uint8_t* patched = b2Alloc( recSize );
+		memcpy( patched, recData, recSize );
+		patched[boundsRecord] = 0xFE;
+		ENSURE( b2ValidateReplay( patched, recSize, 0 ) );
+		b2Free( patched, recSize );
+	}
+
+	// A declared payload extending beyond the available recording bytes is rejected before dispatch.
+	{
+		uint8_t* patched = b2Alloc( recSize );
+		memcpy( patched, recData, recSize );
+		WriteReplayPayloadSize( patched, bodyRecord, 0xFFFFFFu );
+		ENSURE( b2ValidateReplay( patched, recSize, 0 ) == false );
+		b2Free( patched, recSize );
+	}
+
+	return 0;
+}
+
 // Query callbacks used by RecordingTest
 static int s_overlapCount = 0;
 static bool s_overlapFcn( b2ShapeId id, void* ctx )
@@ -484,8 +571,10 @@ int RecordingTest( void )
 	// Replay from the buffer with the recorded worker count
 	ENSURE( b2ValidateReplay( recData, recSize, 0 ) );
 
-	// Replay with a different worker count to prove cross-thread determinism
+	// Replay with a different worker count as a cross-thread determinism regression check.
 	ENSURE( b2ValidateReplay( recData, recSize, 4 ) );
+
+	ENSURE( MalformedReplayPayloadBoundaryTest( recData, recSize ) == 0 );
 
 	// The reserved header bytes (offsets 8 and 16, formerly buildHash and simdWidth) must stay
 	// ignored on read. Guards a future change that starts validating them or shrinks the header.

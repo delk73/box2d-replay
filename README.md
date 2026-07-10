@@ -99,6 +99,21 @@ The samples app doubles as a viewer for Box2D recordings (`.b2rec` files). Any p
 
 On Windows you can also drag a `.b2rec` file onto `samples.exe`. The viewer runs from any directory. Without an argument, open a recording from the **Replay** menu. See [docs/recording.md](docs/recording.md) for how to make a recording.
 
+## Retained headless replay checks
+
+Box2D already provides `.b2rec` recording and replay, including the graphical replay viewer described above. This branch explores a small retained headless validation layer around that existing replay system:
+
+- Run known `.b2rec` scenarios without the GUI.
+- Emit structured witness rows through the public C API replay path.
+- Compare generated witnesses with checked-in expected witnesses.
+- Provide a focused `replay-check` target.
+- Harden replay record dispatch at payload boundaries.
+- Exercise malformed payload framing with regression tests.
+
+Note: this discussion branch wires `samples/headless_replay` into top-level CMake.
+
+Question: is this retained headless witness-check pattern useful and, if accepted, where it should live in upstream Box2D.
+
 ## Compatibility
 
 The Box2D library and samples build and run on Windows, Linux, and Mac.

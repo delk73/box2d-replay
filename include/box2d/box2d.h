@@ -1489,8 +1489,9 @@ B2_API b2WorldId b2RecPlayer_GetWorldId( const b2RecPlayer* player );
 /// Rewind the player to the first step, recreating the replay world from the file.
 B2_API void b2RecPlayer_Restart( b2RecPlayer* player );
 
-/// Seek to a recorded step. Seeking backward rewinds and re-runs from the start, so the
-/// cost grows with the target frame. Clamps to the recording bounds.
+/// Seek to a recorded step. Replay advances by dispatching records forward; seeking may
+/// restore from the nearest retained keyframe in either direction to limit replay work.
+/// Clamps to the recording bounds.
 B2_API void b2RecPlayer_SeekFrame( b2RecPlayer* player, int targetFrame );
 
 /// Get the number of steps replayed so far.
@@ -1508,8 +1509,8 @@ B2_API bool b2RecPlayer_HasDiverged( const b2RecPlayer* player );
 /// Get the first step at which replay diverged, or -1 if it has not diverged.
 B2_API int b2RecPlayer_GetDivergeFrame( const b2RecPlayer* player );
 
-/// Tune the keyframe ring used to speed up backward seeking. A keyframe is a periodic snapshot the
-/// player restores from instead of replaying from the start, trading memory for seek speed.
+/// Tune the keyframe ring used to speed up seeking. A keyframe is a periodic snapshot the player
+/// restores from instead of replaying from an earlier point, trading memory for seek speed.
 /// @param player the recording player
 /// @param budgetBytes Memory cap for the kept snapshots. The spacing widens to stay under it.
 /// @param minIntervalFrames Finest spacing between keyframes, in frames.
